@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>筆算マスター：完璧な整列</title>
+    <style>
+        :root { 
+            --bg-color: #e3f2fd; --panel-color: #f1f8e9; 
+            --primary-blue: #0288d1; --correct-green: #4caf50; --miss-orange: #ff9800;
+            --header-bg: #fff9c4; --master-gold: #fff8e1;
+        }
+
+        body { 
+            font-family: "UD Digi Kyokasho NK-R", "UD Digi Kyokasho N-R", "BIZ UDゴシック", sans-serif;
+            background-color: var(--bg-color); text-align: center; margin: 0; padding: 10px; color: #333;
+            touch-action: manipulation;
+        }
+
+        body.master-mode { background-color: var(--master-gold); }
+
+        .container { 
+            max-width: 500px; margin: 0 auto; background: var(--panel-color); 
+            padding: 20px; border-radius: 25px; border: 3px solid #c5e1a5; min-height: 580px;
+        }
+        body.master-mode .container { background: #ffffff; border-color: #fdd835; box-shadow: 0 0 20px rgba(255, 215, 0, 0.3); }
+
+        #master-title {
+            display: none; font-size: 1.8rem; font-weight: bold; margin-bottom: 10px;
+            color: #af9500; text-shadow: 1px 1px 2px #fff, 0 0 10px #ffd700;
+            animation: shine 2s infinite;
+        }
+        @keyframes shine { 0%, 100% { opacity: 0.8; } 50% { opacity: 1; transform: scale(1.05); } }
+
+        .level-btn { padding: 10px 12px; border-radius: 20px; border: 2px solid #aed581; font-weight: bold; font-family: inherit; background: white; cursor: pointer; }
+        .level-btn.locked { background: #eee !important; border-color: #ccc !important; color: #999 !important; }
+        .guide-text { font-size: 0.75rem; color: #666; margin: 5px 0; }
+        .stage-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 10px; }
+        .stage-btn { padding: 12px 5px; background: white; border: 2px solid #dce775; border-radius: 18px; font-family: inherit; font-weight: bold; }
+        .medal-slot { font-size: 3rem; display: block; line-height: 1; min-height: 3.2rem; }
+
+        /* 筆算エリアの整列 */
+        .hissan-container { display: flex; flex-direction: column; align-items: center; margin: 15px 0; }
+        .hissan-row { display: grid; grid-template-columns: repeat(5, 55px); gap: 4px; position: relative; height: 75px; justify-content: center; }
+        .hissan-row.border-bottom { border-bottom: 4px solid #555; margin-bottom: 4px; }
+        .operator { position: absolute; left: 10px; bottom: 10px; font-size: 2rem; font-weight: bold; }
+
+        .box { 
+            width: 55px; height: 65px; border: 2px solid #cddc39; border-radius: 10px; 
+            display: flex; align-items: center; justify-content: center; background: white; 
+            font-size: 2.6rem; position: relative;
+        }
+        .box.header-num { background: var(--header-bg); border-color: #fbc02d; font-weight: bold; }
+        .box.active { border-color: #03a9f4; background: #e1f5fe; outline: 4px solid rgba(3, 169, 244, 0.3); }
+        .box.correct { border-color: var(--correct-green); background: #f1f8e9; color: var(--correct-green); }
+        .box.empty { border-color: transparent; background: transparent; }
+
+        /* ⭕️アニメーション */
+        .maru {
+            position: absolute; top: -5px; left: -5px; width: 65px; height: 75px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 4rem; color: rgba(76, 175, 80, 0.7);
+            pointer-events: none; opacity: 0; z-index: 10;
+        }
+        .pop-maru { animation: popMaru 0.5s ease-out; }
+        @keyframes popMaru {
+            0% { transform: scale(0.5); opacity: 0; }
+            50% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(1); opacity: 0; }
+        }
+
+        .numpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-width: 300px; margin: 15px auto; }
+        .num-btn { padding: 15px; font-size: 2rem; border-radius: 15px; background: white; border: 1px solid #bbdefb; box-shadow: 0 5px #90caf9; font-family: inherit; font-weight: bold; }
+        .num-btn:active { transform: translateY(4px); box-shadow: none; }
+        .hidden { display: none; }
+        #result-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.95); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 100; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div id="menu-screen">
+        <div id="master-title">✨ 私は筆算マスター ✨</div>
+        <h2 id="normal-title" style="color: #558b2f; margin: 10px 0;">ひっ算ドリル</h2>
+        <div style="display:flex; justify-content:center; gap:8px;">
+            <button id="btn-easy" onclick="setLevel('easy')" class="level-btn">初級</button>
+            <button id="btn-hard" onclick="setLevel('hard')" class="level-btn">中級</button>
+            <button id="btn-pro" onclick="setLevel('pro')" class="level-btn">上級⚡️</button>
+        </div>
+        <div class="guide-text" id="lock-msg">初級と中級すべてでメダルをとったら上級解放！</div>
+        <div class="guide-text" style="color: #ff9800; font-weight: bold;">★ 30個全て金メダルで特別な画面に！ ★</div>
+        <div class="stage-grid" id="stage-grid"></div>
+    </div>
+
+    <div id="game-screen" class="hidden">
+        <div style="display:flex; justify-content: space-around; margin-bottom:10px; font-weight:bold;">
+            <div id="timer-box" class="hidden" style="color:var(--primary-blue)">残り 120s</div>
+            <div id="q-idx">1 / 5 問目</div>
+            <div style="color:var(--miss-orange)">ミス: <span id="miss-val">0</span></div>
+        </div>
+
+        <div class="hissan-container">
+            <div class="hissan-row" id="row-q1"></div>
+            <div class="hissan-row border-bottom" id="row-q2"><span class="operator">×</span></div>
+            <div class="hissan-row" id="row-ans1"></div>
+            <div class="hissan-row border-bottom" id="row-ans2"></div>
+            <div class="hissan-row" id="row-total"></div>
+        </div>
+
+        <div class="numpad" id="pad"></div>
+        <button onclick="stopGame()" style="border:none; background:none; color:#78909c; text-decoration:underline; cursor:pointer; font-family:inherit;">メニューにもどる</button>
+    </div>
+</div>
+
+<div id="result-overlay" onclick="backToMenu()">
+    <div id="medal-icon" style="font-size:10rem;">🥇</div>
+    <div id="result-msg" style="font-size:2.2rem; font-weight:bold; color:var(--primary-blue); margin-bottom:20px;"></div>
+    <p style="color:#888;">タップしてメニューへ</p>
+</div>
+
+<script>
+    let currentLevel = 'easy', currentStage = 1, currentQIdx = 0, missTotal = 0, targetCells = [], cellIdx = 0, timerInterval = null;
+    const medals = JSON.parse(localStorage.getItem('hissan_v10_aligned') || '{}');
+
+    function updateMasterStatus() {
+        let goldCount = 0, easyCleared = 0, hardCleared = 0;
+        for(let lv of ['easy','hard','pro']) {
+            for(let i=1; i<=10; i++) {
+                const m = medals[`${lv}_${i}`];
+                if(m === '🥇') goldCount++;
+                if(m && lv === 'easy') easyCleared++;
+                if(m && lv === 'hard') hardCleared++;
+            }
+        }
+        document.getElementById('btn-pro').classList.toggle('locked', (easyCleared < 10 || hardCleared < 10));
+        if(goldCount >= 30) {
+            document.body.classList.add('master-mode');
+            document.getElementById('master-title').style.display = 'block';
+            document.getElementById('normal-title').style.display = 'none';
+        }
+    }
+
+    function setLevel(lv) {
+        if(lv === 'pro' && document.getElementById('btn-pro').classList.contains('locked')) return;
+        currentLevel = lv;
+        ['btn-easy', 'btn-hard', 'btn-pro'].forEach(id => {
+            const b = document.getElementById(id);
+            b.style.background = id.includes(lv) ? '#0288d1' : 'white';
+            b.style.color = id.includes(lv) ? 'white' : '#333';
+        });
+        renderMenu();
+    }
+
+    function renderMenu() {
+        const grid = document.getElementById('stage-grid'); grid.innerHTML = '';
+        for (let i = 1; i <= 10; i++) {
+            const btn = document.createElement('button'); btn.className = 'stage-btn';
+            btn.innerHTML = `<span class="medal-slot">${medals[`${currentLevel}_${i}`]||''}</span>ステージ ${i}`;
+            btn.onclick = () => startStage(i); grid.appendChild(btn);
+        }
+    }
+
+    function startStage(st) {
+        currentStage = st; currentQIdx = 0; missTotal = 0;
+        document.getElementById('menu-screen').className = 'hidden';
+        document.getElementById('game-screen').className = '';
+        if (currentLevel === 'pro') {
+            let timeLeft = 120; const tBox = document.getElementById('timer-box');
+            tBox.className = ''; tBox.innerText = `残り ${timeLeft}s`;
+            timerInterval = setInterval(() => {
+                timeLeft--; tBox.innerText = `残り ${timeLeft}s`;
+                if(timeLeft <= 0) { clearInterval(timerInterval); showFinalResult(true); }
+            }, 1000);
+        } else document.getElementById('timer-box').className = 'hidden';
+        nextQuestion();
+    }
+
+    function createCell(val, type, parentId) {
+        const box = document.createElement('div');
+        box.className = `box ${type === 'header' ? 'header-num' : (type === 'empty' ? 'empty' : '')}`;
+        box.innerHTML = `<div class="maru">⭕️</div><span class="num-text">${val}</span>`;
+        document.getElementById(parentId).appendChild(box);
+        return box;
+    }
+
+    function nextQuestion() {
+        currentQIdx++;
+        document.getElementById('q-idx').innerText = `${currentQIdx} / 5 問目`;
+        document.getElementById('miss-val').innerText = missTotal;
+        ['row-q1','row-q2','row-ans1','row-ans2','row-total'].forEach(id => {
+            const el = document.getElementById(id);
+            const op = el.querySelector('.operator');
+            el.innerHTML = ''; if(op) el.appendChild(op);
+            for(let i=0; i<5; i++) createCell('', 'empty', id); // 5桁分の土台
+        });
+
+        let n1, n2;
+        if(currentLevel === 'easy') { n1 = Math.floor(Math.random()*15)+11; n2 = Math.floor(Math.random()*8)+11; }
+        else if(currentLevel === 'hard') { n1 = Math.floor(Math.random()*50)+21; n2 = Math.floor(Math.random()*30)+11; }
+        else { n1 = Math.floor(Math.random()*70)+25; n2 = Math.floor(Math.random()*70)+25; }
+
+        const r1 = n1 * (n2%10), r2 = n1 * Math.floor(n2/10), tot = n1 * n2;
+        
+        const fillRow = (val, rowId, type, isTarget = false, addFixedZero = false) => {
+            const s = val.toString();
+            const row = document.getElementById(rowId);
+            const cells = row.querySelectorAll('.box');
+            let offset = addFixedZero ? 1 : 0;
+            
+            // 右端から埋めていく
+            const tempTargets = [];
+            for(let i=0; i < s.length; i++) {
+                const targetIdx = 4 - i - offset;
+                const cell = cells[targetIdx];
+                cell.className = `box ${type === 'header' ? 'header-num' : ''}`;
+                if(isTarget) {
+                    cell.querySelector('.num-text').innerText = '';
+                    tempTargets.push({ el: cell, val: parseInt(s[s.length-1-i]) });
+                } else {
+                    cell.querySelector('.num-text').innerText = s[s.length-1-i];
+                }
+            }
+            if(addFixedZero) {
+                const zeroCell = cells[4];
+                zeroCell.className = "box empty";
+                zeroCell.querySelector('.num-text').innerText = '0';
+                zeroCell.style.color = '#cfd8dc';
+            }
+            return tempTargets;
+        };
+
+        targetCells = [];
+        fillRow(n1, 'row-q1', 'header');
+        fillRow(n2, 'row-q2', 'header');
+        targetCells.push(...fillRow(r1, 'row-ans1', 'normal', true));
+        targetCells.push(...fillRow(r2, 'row-ans2', 'normal', true, true));
+        targetCells.push(...fillRow(tot, 'row-total', 'normal', true));
+
+        cellIdx = 0; updateFocus();
+    }
+
+    function updateFocus() {
+        document.querySelectorAll('.box').forEach(b => b.classList.remove('active'));
+        if (cellIdx < targetCells.length) targetCells[cellIdx].el.classList.add('active');
+    }
+
+    function press(n) {
+        if (cellIdx >= targetCells.length) return;
+        const t = targetCells[cellIdx];
+        if (n === t.val) {
+            t.el.querySelector('.num-text').innerText = n;
+            t.el.className = "box correct";
+            t.el.querySelector('.maru').classList.add('pop-maru');
+            cellIdx++;
+            if (cellIdx === targetCells.length) {
+                setTimeout(() => { if (currentQIdx < 5) nextQuestion(); else showFinalResult(false); }, 600);
+            } else updateFocus();
+        } else {
+            missTotal++; document.getElementById('miss-val').innerText = missTotal;
+            t.el.style.backgroundColor = "#ffebee"; setTimeout(() => t.el.style.backgroundColor = "white", 200);
+        }
+    }
+
+    function showFinalResult(isTimeUp) {
+        clearInterval(timerInterval);
+        const overlay = document.getElementById('result-overlay'), icon = document.getElementById('medal-icon'), msg = document.getElementById('result-msg');
+        let m = isTimeUp ? "⌛" : (missTotal === 0 ? "🥇" : (missTotal <= 2 ? "🥈" : (missTotal <= 5 ? "🥉" : "🤝")));
+        if (!isTimeUp && m !== "🤝") {
+            const key = `${currentLevel}_${currentStage}`;
+            const ranks = {"🥇":3, "🥈":2, "🥉":1, "":0};
+            if(ranks[m] > (ranks[medals[key]] || 0)) { medals[key] = m; localStorage.setItem('hissan_v10_aligned', JSON.stringify(medals)); }
+        }
+        icon.innerText = m; msg.innerText = (m==="🥇"?"パーフェクト！": m+"獲得！"); overlay.style.display = 'flex';
+    }
+
+    function backToMenu() {
+        document.getElementById('result-overlay').style.display = 'none';
+        document.getElementById('menu-screen').className = '';
+        document.getElementById('game-screen').className = 'hidden';
+        updateMasterStatus(); renderMenu();
+    }
+    function stopGame() { clearInterval(timerInterval); backToMenu(); }
+
+    [7,8,9,4,5,6,1,2,3,0].forEach(n => {
+        const b = document.createElement('button'); b.className="num-btn"; b.innerText=n; b.onclick=()=>press(n);
+        document.getElementById('pad').appendChild(b);
+    });
+
+    updateMasterStatus(); setLevel('easy');
+</script>
+</body>
+</html>
